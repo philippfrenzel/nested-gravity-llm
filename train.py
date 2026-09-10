@@ -57,7 +57,8 @@ def experiment_name(config) -> str:
 
 
 def get_batch(config, split: str, step: int, text_dataset: CharacterTextDataset | None = None) -> Dict[str, torch.Tensor]:
-    seed = config.seed + step + (0 if split == "train" else 10_000)
+    seed_offsets = {"train": 0, "val": 10_000, "test": 20_000}
+    seed = config.seed + step + seed_offsets.get(split, 10_000)
     if config.task == "copy":
         return generate_copy_batch(config.batch_size, config.memory_length, config.gap_length, config.vocab_size, seed)
     if config.task == "associative_recall":
@@ -73,7 +74,9 @@ def get_batch(config, split: str, step: int, text_dataset: CharacterTextDataset 
 def sequence_metrics(logits: torch.Tensor, targets: torch.Tensor, target_mask: torch.Tensor) -> Dict[str, float]:
     aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask)
     vocab_size = logits.size(-1)
-    loss = F.cross_entropy(aligned_logits.reshape(-1, vocab_size), aligned_targets.reshape(-1))
+    masked_logits = aligned_logits[aligned_mask]
+    masked_targets = aligned_targets[aligned_mask]
+    loss = F.cross_entropy(masked_logits.reshape(-1, vocab_size), masked_targets.reshape(-1))
     predictions = aligned_logits.argmax(dim=-1)
     correct = (predictions == aligned_targets) & aligned_mask
     accuracy = correct.float().sum() / aligned_mask.float().sum().clamp_min(1.0)
@@ -117,7 +120,7 @@ def extra_task_metrics(config, logits: torch.Tensor, targets: torch.Tensor, targ
             }
         )
     elif config.task == "text":
-        loss = F.cross_entropy(aligned_logits.reshape(-1, logits.size(-1)), aligned_targets.reshape(-1))
+        loss = F.cross_entropy(aligned_logits[aligned_mask].reshape(-1, logits.size(-1)), aligned_targets[aligned_mask].reshape(-1))
         metrics["bits_per_character"] = loss.item() / math.log(2)
     return metrics
 

@@ -43,6 +43,7 @@ python visualize.py --checkpoint outputs/checkpoints/nested_gravity_copy_gap64_b
 - Checkpoints unter `outputs/checkpoints/`
 - CSV/JSON-Metriken unter `outputs/metrics/`
 - PNG-Plots unter `outputs/plots/`
+- `configs/default.yaml` verwendet bewusst nur ein flaches YAML-kompatibles `key: value`-Format, damit keine zusätzliche YAML-Bibliothek nötig ist
 
 ## Tests
 

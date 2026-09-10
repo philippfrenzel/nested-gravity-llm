@@ -26,6 +26,17 @@ def pca_2d(matrix: np.ndarray) -> np.ndarray:
     return centered @ vh[:2].T
 
 
+def causality_profile(model, tokens: torch.Tensor) -> np.ndarray:
+    if tokens.size(1) < 3:
+        return np.zeros(tokens.size(1), dtype=float)
+    modified = tokens.clone()
+    modified[:, -1] = (modified[:, -1] + 1) % max(2, int(tokens.max().item()) + 2)
+    with torch.no_grad():
+        baseline = model(tokens)
+        changed = model(modified)
+    return (baseline - changed).abs().amax(dim=-1)[0].cpu().numpy()
+
+
 def main() -> None:
     args = parse_args()
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
@@ -153,9 +164,11 @@ def main() -> None:
             plt.savefig(plot_dir / "gravitational_interaction_strength.png")
             plt.close()
 
+    causality = causality_profile(model, batch["inputs"][:1])
     plt.figure()
-    plt.text(0.1, 0.5, "Causality verified by tests", fontsize=12)
-    plt.axis("off")
+    plt.plot(np.arange(len(causality)), causality)
+    plt.xlabel("position")
+    plt.ylabel("max abs logit diff")
     plt.tight_layout()
     plt.savefig(plot_dir / "causality_check.png")
     plt.close()

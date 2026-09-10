@@ -70,14 +70,19 @@ def _coerce_value(raw: str) -> Any:
 
 
 def load_config_file(path: str) -> Dict[str, Any]:
+    """Load a flat YAML-compatible `key: value` config without extra dependencies."""
     config: Dict[str, Any] = {}
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
+    for line_number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), start=1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         if ":" not in stripped:
             continue
+        if line[:1].isspace() or stripped.startswith("- "):
+            raise ValueError(f"Unsupported nested/list config syntax at {path}:{line_number}")
         key, value = stripped.split(":", 1)
+        if ":" in value and not value.strip().startswith(("'", "\"")):
+            raise ValueError(f"Ambiguous config value at {path}:{line_number}; quote values containing ':'")
         config[key.strip()] = _coerce_value(value.strip())
     return config
 
