@@ -4,6 +4,8 @@ __pycache__/
 outputs/checkpoints/*
 outputs/metrics/*
 outputs/plots/*
+outputs/report.html
+outputs/reports/*
 !outputs/checkpoints/.gitkeep
 !outputs/metrics/.gitkeep
 !outputs/plots/.gitkeep

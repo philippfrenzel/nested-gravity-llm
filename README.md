@@ -80,6 +80,7 @@ ausführen.
 - Checkpoints unter `outputs/checkpoints/`
 - CSV/JSON-Metriken unter `outputs/metrics/`
 - PNG-Plots unter `outputs/plots/`
+- Statischer HTML-Report mit Vergleichstabelle und Artefakt-Galerie über `python report.py`; Ausgabe: `outputs/report.html`
 - `configs/default.yaml` verwendet bewusst nur ein flaches YAML-kompatibles `key: value`-Format, damit keine zusätzliche YAML-Bibliothek nötig ist
 
 ## Tests
