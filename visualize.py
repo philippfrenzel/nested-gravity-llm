@@ -60,6 +60,7 @@ def main() -> None:
     batch = get_batch(config, "val", 0, text_dataset)
     with torch.no_grad():
         _, metrics = model(batch["inputs"], return_metrics=True)
+    trace = getattr(model, "latest_trace", {})
 
     accuracy_candidates = [key for key in rows[-1].keys() if "accuracy_at_gap_" in key]
     if accuracy_candidates:
@@ -75,13 +76,20 @@ def main() -> None:
 
     if hasattr(model, "centers"):
         centers = model.centers.detach().cpu().numpy()
-        projected_centers = pca_2d(centers)
-        plt.figure()
-        plt.scatter(projected_centers[:, 0], projected_centers[:, 1], c=np.arange(len(projected_centers)))
-        plt.title("gravity centers")
-        plt.tight_layout()
-        plt.savefig(plot_dir / "gravity_centers.png")
-        plt.close()
+        token_positions = np.array(trace.get("positions", []), dtype=float)
+        if len(token_positions) > 0:
+            combined = np.concatenate([token_positions, centers], axis=0)
+            projected = pca_2d(combined)
+            projected_tokens = projected[: len(token_positions)]
+            projected_centers = projected[len(token_positions) :]
+            plt.figure()
+            plt.scatter(projected_tokens[:, 0], projected_tokens[:, 1], c=np.arange(len(projected_tokens)), s=20, label="tokens")
+            plt.scatter(projected_centers[:, 0], projected_centers[:, 1], c="red", marker="x", s=80, label="centers")
+            plt.legend()
+            plt.title("gravity centers and token positions")
+            plt.tight_layout()
+            plt.savefig(plot_dir / "gravity_centers.png")
+            plt.close()
 
         usage = np.array(metrics.get("center_usage", [0.0] * centers.shape[0]))
         plt.figure()
@@ -92,31 +100,37 @@ def main() -> None:
         plt.savefig(plot_dir / "center_usage.png")
         plt.close()
 
-        plt.figure()
-        plt.plot([metrics.get("center_entropy", 0.0)] * batch["inputs"].shape[1])
-        plt.xlabel("position")
-        plt.ylabel("center entropy")
-        plt.tight_layout()
-        plt.savefig(plot_dir / "center_entropy.png")
-        plt.close()
+        entropy_by_position = np.array(trace.get("center_entropy_by_position", []), dtype=float)
+        if len(entropy_by_position) > 0:
+            plt.figure()
+            plt.plot(entropy_by_position)
+            plt.xlabel("position")
+            plt.ylabel("center entropy")
+            plt.tight_layout()
+            plt.savefig(plot_dir / "center_entropy.png")
+            plt.close()
 
-        plt.figure()
-        plt.plot([metrics.get("mean_local_force_norm", 0.0)] * batch["inputs"].shape[1], label="local")
-        plt.plot([metrics.get("mean_nesting_force_norm", 0.0)] * batch["inputs"].shape[1], label="nesting")
-        plt.legend()
-        plt.xlabel("position")
-        plt.ylabel("force norm")
-        plt.tight_layout()
-        plt.savefig(plot_dir / "force_norms.png")
-        plt.close()
+        local_force_norms = np.array(trace.get("local_force_norms_by_position", []), dtype=float)
+        nesting_force_norms = np.array(trace.get("nesting_force_norms_by_position", []), dtype=float)
+        if len(local_force_norms) > 0 and len(nesting_force_norms) > 0:
+            plt.figure()
+            plt.plot(local_force_norms, label="local")
+            plt.plot(nesting_force_norms, label="nesting")
+            plt.legend()
+            plt.xlabel("position")
+            plt.ylabel("force norm")
+            plt.tight_layout()
+            plt.savefig(plot_dir / "force_norms.png")
+            plt.close()
 
-        interaction = np.outer(np.ones(batch["inputs"].shape[1]), np.ones(batch["inputs"].shape[1])) * metrics.get("mean_local_force_norm", 0.0)
-        plt.figure()
-        plt.imshow(interaction, aspect="auto", origin="lower")
-        plt.colorbar(label="gravitational interaction strength")
-        plt.tight_layout()
-        plt.savefig(plot_dir / "gravitational_interaction_strength.png")
-        plt.close()
+        interaction = np.array(trace.get("interaction_strength", []), dtype=float)
+        if interaction.size > 0:
+            plt.figure()
+            plt.imshow(interaction, aspect="auto", origin="lower")
+            plt.colorbar(label="gravitational interaction strength")
+            plt.tight_layout()
+            plt.savefig(plot_dir / "gravitational_interaction_strength.png")
+            plt.close()
 
     plt.figure()
     plt.text(0.1, 0.5, "Causality verified by tests", fontsize=12)

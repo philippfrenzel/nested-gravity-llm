@@ -29,11 +29,12 @@ class CausalTransformerLM(nn.Module):
             dropout=dropout,
             batch_first=True,
             activation="gelu",
-            norm_first=True,
+            norm_first=False,
         )
         self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
         self.output_projection = nn.Linear(embedding_dim, vocab_size)
         self.latest_metrics: Dict[str, float] = {}
+        self.latest_trace: Dict[str, list] = {}
 
     def forward(self, tokens: torch.Tensor, return_metrics: bool = False) -> torch.Tensor | Tuple[torch.Tensor, Dict[str, float]]:
         batch_size, sequence_length = tokens.shape
@@ -54,6 +55,7 @@ class CausalTransformerLM(nn.Module):
             "mean_token_center_distance": 0.0,
             "mean_token_token_distance": 0.0,
         }
+        self.latest_trace = {}
         if return_metrics:
             return logits, dict(self.latest_metrics)
         return logits

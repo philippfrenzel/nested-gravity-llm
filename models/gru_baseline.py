@@ -28,6 +28,7 @@ class GRULanguageModel(nn.Module):
         self.layer_norm = nn.LayerNorm(hidden_dim)
         self.output_projection = nn.Linear(hidden_dim, vocab_size)
         self.latest_metrics: Dict[str, float] = {}
+        self.latest_trace: Dict[str, list] = {}
 
     def forward(self, tokens: torch.Tensor, return_metrics: bool = False) -> torch.Tensor | Tuple[torch.Tensor, Dict[str, float]]:
         embedded = self.embedding(tokens)
@@ -43,6 +44,7 @@ class GRULanguageModel(nn.Module):
             "mean_token_center_distance": 0.0,
             "mean_token_token_distance": 0.0,
         }
+        self.latest_trace = {}
         if return_metrics:
             return logits, dict(self.latest_metrics)
         return logits
