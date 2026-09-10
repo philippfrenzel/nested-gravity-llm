@@ -94,7 +94,7 @@ def main() -> None:
         plt.xlabel("num_pairs")
         plt.ylabel("accuracy")
         plt.tight_layout()
-        plt.savefig(plot_dir / "accuracy_by_gap.png")
+        plt.savefig(plot_dir / "accuracy_by_num_pairs.png")
         plt.close()
     elif {"validation_token_accuracy", "validation_full_sequence_accuracy"} <= set(rows[-1].keys()):
         plt.figure()
@@ -103,7 +103,7 @@ def main() -> None:
         plt.bar(labels, values)
         plt.ylim(0.0, 1.0)
         plt.tight_layout()
-        plt.savefig(plot_dir / "accuracy_by_gap.png")
+        plt.savefig(plot_dir / "accuracy_summary.png")
         plt.close()
 
     if hasattr(model, "centers"):

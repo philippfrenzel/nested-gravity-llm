@@ -54,7 +54,13 @@ class CharacterTextDataset:
     def sample_batch(self, split: str, batch_size: int, step: int = 0) -> Dict[str, torch.Tensor]:
         data = self.split()[split]
         generator = np.random.default_rng(self.seed + {"train": 0, "val": 1, "test": 2}[split] + step * 9973)
-        starts = generator.integers(0, len(data) - self.sequence_length, size=batch_size)
+        max_start = len(data) - (self.sequence_length + 1)
+        if max_start < 0:
+            raise ValueError(
+                f"Split '{split}' is too short for sequence_length={self.sequence_length}: "
+                f"need at least {self.sequence_length + 1} tokens, got {len(data)}"
+            )
+        starts = generator.integers(0, max_start + 1, size=batch_size)
         sequences = [data[start : start + self.sequence_length + 1] for start in starts]
         stacked = torch.stack(sequences, dim=0)
         targets = stacked[:, 1:].clone()

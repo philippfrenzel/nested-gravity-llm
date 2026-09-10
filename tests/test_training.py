@@ -61,6 +61,11 @@ class TrainingTests(unittest.TestCase):
         self.assertGreater(metrics["gradient_norm"], 0.0)
         self.assertIn("accuracy_at_gap_8", metrics)
 
+        eval_metrics = train_or_eval_epoch(config, model, None, "val")
+        self.assertTrue(torch.isfinite(torch.tensor(eval_metrics["loss"])))
+        self.assertEqual(eval_metrics["gradient_norm"], 0.0)
+        self.assertIn("accuracy_at_gap_8", eval_metrics)
+
 
 if __name__ == "__main__":
     unittest.main()
