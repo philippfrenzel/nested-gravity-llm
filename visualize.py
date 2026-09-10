@@ -42,6 +42,8 @@ def main() -> None:
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     checkpoint_config = ExperimentConfig(**checkpoint["config"])
     config = ExperimentConfig(**checkpoint["config"])
+    if args.task and args.task != checkpoint_config.task:
+        raise ValueError(f"Checkpoint task is '{checkpoint_config.task}', cannot visualize as '{args.task}'")
     if args.task:
         config.task = args.task
     set_seed(config.seed)
@@ -56,6 +58,8 @@ def main() -> None:
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     rows = list(csv.DictReader(metrics_csv.open(encoding="utf-8")))
+    if not rows:
+        raise ValueError(f"No metric rows found in {metrics_csv}")
     epochs = [int(row["epoch"]) for row in rows]
     train_loss = [float(row["train_loss"]) for row in rows]
     val_loss = [float(row["validation_loss"]) for row in rows]
@@ -75,11 +79,12 @@ def main() -> None:
     trace = getattr(model, "latest_trace", {})
 
     accuracy_candidates = [key for key in rows[-1].keys() if key.startswith("validation_accuracy_at_gap_")]
-    recall_candidates = [key for key in rows[-1].keys() if key.startswith("validation_accuracy_at_num_pairs_")]
+    recall_candidates = [key for key in rows[-1].keys() if key.startswith("validation_accuracy_num_pairs_")]
     if accuracy_candidates:
         plt.figure()
-        gaps = [int(key.rsplit("_", 1)[-1]) for key in accuracy_candidates]
-        values = [float(rows[-1][key]) for key in accuracy_candidates]
+        pairs = sorted((int(key.rsplit("_", 1)[-1]), float(rows[-1][key])) for key in accuracy_candidates)
+        gaps = [pair[0] for pair in pairs]
+        values = [pair[1] for pair in pairs]
         plt.plot(gaps, values, marker="o")
         plt.xlabel("gap")
         plt.ylabel("accuracy")
@@ -88,8 +93,9 @@ def main() -> None:
         plt.close()
     elif recall_candidates:
         plt.figure()
-        pair_counts = [int(key.rsplit("_", 1)[-1]) for key in recall_candidates]
-        values = [float(rows[-1][key]) for key in recall_candidates]
+        pairs = sorted((int(key.rsplit("_", 1)[-1]), float(rows[-1][key])) for key in recall_candidates)
+        pair_counts = [pair[0] for pair in pairs]
+        values = [pair[1] for pair in pairs]
         plt.plot(pair_counts, values, marker="o")
         plt.xlabel("num_pairs")
         plt.ylabel("accuracy")

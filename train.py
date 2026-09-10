@@ -71,8 +71,13 @@ def get_batch(config, split: str, step: int, text_dataset: CharacterTextDataset 
     raise ValueError(config.task)
 
 
-def sequence_metrics(logits: torch.Tensor, targets: torch.Tensor, target_mask: torch.Tensor) -> Dict[str, float]:
-    aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask)
+def sequence_metrics(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    target_mask: torch.Tensor,
+    targets_are_aligned: bool = False,
+) -> Dict[str, float]:
+    aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask, targets_are_aligned)
     vocab_size = logits.size(-1)
     masked_logits = aligned_logits[aligned_mask]
     masked_targets = aligned_targets[aligned_mask]
@@ -92,14 +97,21 @@ def align_for_loss(
     logits: torch.Tensor,
     targets: torch.Tensor,
     target_mask: torch.Tensor,
+    targets_are_aligned: bool,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    if targets.shape == logits.shape[:2]:
+    if targets_are_aligned:
         return logits, targets, target_mask
     return logits[:, :-1], targets[:, 1:], target_mask[:, 1:]
 
 
-def extra_task_metrics(config, logits: torch.Tensor, targets: torch.Tensor, target_mask: torch.Tensor) -> Dict[str, float]:
-    aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask)
+def extra_task_metrics(
+    config,
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    target_mask: torch.Tensor,
+    targets_are_aligned: bool = False,
+) -> Dict[str, float]:
+    aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask, targets_are_aligned)
     predictions = aligned_logits.argmax(dim=-1)
     selected_correct = ((predictions == aligned_targets) & aligned_mask).float()
     selected_total = aligned_mask.float().sum().clamp_min(1.0)
@@ -107,7 +119,7 @@ def extra_task_metrics(config, logits: torch.Tensor, targets: torch.Tensor, targ
     if config.task == "copy":
         metrics[f"accuracy_at_gap_{config.gap_length}"] = (selected_correct.sum() / selected_total).item()
     elif config.task == "associative_recall":
-        metrics[f"accuracy_at_num_pairs_{config.num_pairs}"] = (selected_correct.sum() / selected_total).item()
+        metrics[f"accuracy_num_pairs_{config.num_pairs}"] = (selected_correct.sum() / selected_total).item()
     elif config.task == "brackets":
         token_accuracy = (selected_correct.sum() / selected_total).item()
         full_sequence = (((predictions == aligned_targets) | ~aligned_mask).all(dim=1)).float().mean().item()
@@ -158,9 +170,10 @@ def train_or_eval_epoch(config, model: nn.Module, optimizer: AdamW | None, split
         inputs = batch["inputs"]
         targets = batch["targets"]
         target_mask = batch["target_mask"]
+        targets_are_aligned = batch.get("targets_are_aligned", False)
         with torch.set_grad_enabled(is_train):
             logits, model_metrics = model(inputs, return_metrics=True)
-            metrics = sequence_metrics(logits, targets, target_mask)
+            metrics = sequence_metrics(logits, targets, target_mask, targets_are_aligned)
             loss = metrics["loss"] + regularization_loss(config, model, model_metrics)
             if is_train:
                 optimizer.zero_grad(set_to_none=True)
@@ -172,7 +185,7 @@ def train_or_eval_epoch(config, model: nn.Module, optimizer: AdamW | None, split
         totals["accuracy"] += float(metrics["accuracy"])
         for key in list(totals.keys())[3:]:
             totals[key] += float(model_metrics.get(key, 0.0))
-        batch_extra = extra_task_metrics(config, logits, targets, target_mask)
+        batch_extra = extra_task_metrics(config, logits, targets, target_mask, targets_are_aligned)
         for key, value in batch_extra.items():
             extra_totals[key] = extra_totals.get(key, 0.0) + float(value)
     averaged = {key: value / num_steps for key, value in totals.items()}

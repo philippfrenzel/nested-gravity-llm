@@ -38,6 +38,11 @@ class CausalTransformerLM(nn.Module):
 
     def forward(self, tokens: torch.Tensor, return_metrics: bool = False) -> torch.Tensor | Tuple[torch.Tensor, Dict[str, float]]:
         batch_size, sequence_length = tokens.shape
+        if sequence_length > self.position_embedding.num_embeddings:
+            raise ValueError(
+                f"Sequence length {sequence_length} exceeds max_sequence_length "
+                f"{self.position_embedding.num_embeddings}"
+            )
         positions = torch.arange(sequence_length, device=tokens.device).unsqueeze(0).expand(batch_size, -1)
         hidden = self.embedding(tokens) + self.position_embedding(positions)
         causal_mask = torch.triu(

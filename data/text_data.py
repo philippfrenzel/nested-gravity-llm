@@ -65,4 +65,4 @@ class CharacterTextDataset:
         stacked = torch.stack(sequences, dim=0)
         targets = stacked[:, 1:].clone()
         target_mask = torch.ones_like(targets, dtype=torch.bool)
-        return {"inputs": stacked[:, :-1], "targets": targets, "target_mask": target_mask}
+        return {"inputs": stacked[:, :-1], "targets": targets, "target_mask": target_mask, "targets_are_aligned": True}

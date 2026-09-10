@@ -23,6 +23,8 @@ def main() -> None:
     args = parse_args()
     payload = torch.load(args.checkpoint, map_location="cpu")
     config = ExperimentConfig(**payload["config"])
+    if args.task is not None and args.task != config.task:
+        raise ValueError(f"Checkpoint task is '{config.task}', cannot evaluate as '{args.task}'")
     if args.task is not None:
         config.task = args.task
     set_seed(config.seed)

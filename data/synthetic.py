@@ -35,7 +35,7 @@ def generate_copy_batch(
     tokens = torch.cat([memory, delimiter, gap, delimiter, memory], dim=1)
     target_mask = torch.zeros_like(tokens, dtype=torch.bool)
     target_mask[:, -memory_length:] = True
-    return {"inputs": tokens, "targets": tokens.clone(), "target_mask": target_mask}
+    return {"inputs": tokens, "targets": tokens.clone(), "target_mask": target_mask, "targets_are_aligned": False}
 
 
 def generate_associative_recall_batch(
@@ -56,7 +56,7 @@ def generate_associative_recall_batch(
     tokens = torch.cat([interleaved, query, query_key, answer, answer_value], dim=1)
     target_mask = torch.zeros_like(tokens, dtype=torch.bool)
     target_mask[:, -1:] = True
-    return {"inputs": tokens, "targets": tokens.clone(), "target_mask": target_mask}
+    return {"inputs": tokens, "targets": tokens.clone(), "target_mask": target_mask, "targets_are_aligned": False}
 
 
 def generate_brackets_batch(
@@ -98,4 +98,4 @@ def generate_brackets_batch(
         padded_masks.append(mask + [False] * pad_len)
     tokens = torch.tensor(padded, dtype=torch.long)
     target_mask = torch.tensor(padded_masks, dtype=torch.bool)
-    return {"inputs": tokens, "targets": tokens.clone(), "target_mask": target_mask}
+    return {"inputs": tokens, "targets": tokens.clone(), "target_mask": target_mask, "targets_are_aligned": False}
