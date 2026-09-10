@@ -51,9 +51,9 @@ class CharacterTextDataset:
             "test": torch.tensor(encoded[val_end:], dtype=torch.long),
         }
 
-    def sample_batch(self, split: str, batch_size: int) -> Dict[str, torch.Tensor]:
+    def sample_batch(self, split: str, batch_size: int, step: int = 0) -> Dict[str, torch.Tensor]:
         data = self.split()[split]
-        generator = np.random.default_rng(self.seed + {"train": 0, "val": 1, "test": 2}[split])
+        generator = np.random.default_rng(self.seed + {"train": 0, "val": 1, "test": 2}[split] + step * 9973)
         starts = generator.integers(0, len(data) - self.sequence_length - 1, size=batch_size)
         sequences = [data[start : start + self.sequence_length + 1] for start in starts]
         stacked = torch.stack(sequences, dim=0)

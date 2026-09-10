@@ -29,6 +29,7 @@ def pca_2d(matrix: np.ndarray) -> np.ndarray:
 def main() -> None:
     args = parse_args()
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
+    checkpoint_config = ExperimentConfig(**checkpoint["config"])
     config = ExperimentConfig(**checkpoint["config"])
     if args.task:
         config.task = args.task
@@ -39,7 +40,7 @@ def main() -> None:
     model = make_model(config)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
-    metrics_csv = Path(config.output_root) / "metrics" / f"{experiment_name(config)}.csv"
+    metrics_csv = Path(checkpoint_config.output_root) / "metrics" / f"{experiment_name(checkpoint_config)}.csv"
     plot_dir = Path(config.output_root) / "plots"
     plot_dir.mkdir(parents=True, exist_ok=True)
 

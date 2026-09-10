@@ -8,7 +8,7 @@ import torch
 
 from config import ExperimentConfig, save_json, set_seed
 from data.text_data import CharacterTextDataset
-from train import experiment_name, get_batch, make_model, sequence_metrics, extra_task_metrics
+from train import experiment_name, make_model, train_or_eval_epoch
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,13 +32,7 @@ def main() -> None:
     model = make_model(config)
     model.load_state_dict(payload["model_state"])
     model.eval()
-    batch = get_batch(config, args.split, 0, text_dataset)
-    with torch.no_grad():
-        logits, model_metrics = model(batch["inputs"], return_metrics=True)
-    metrics = sequence_metrics(logits, batch["targets"], batch["target_mask"])
-    metrics.update(extra_task_metrics(config, logits, batch["targets"], batch["target_mask"]))
-    metrics.update(model_metrics)
-    metrics["loss"] = float(metrics["loss"].item())
+    metrics = train_or_eval_epoch(config, model, None, args.split, text_dataset)
     output_path = Path(config.output_root) / "metrics" / f"{experiment_name(config)}_{args.split}_evaluation.json"
     save_json(output_path, metrics)
     print(json.dumps(metrics, indent=2, ensure_ascii=False))

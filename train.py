@@ -66,7 +66,7 @@ def get_batch(config, split: str, step: int, text_dataset: CharacterTextDataset 
         return generate_brackets_batch(config.batch_size, config.max_depth, config.noise_tokens, seed)
     if config.task == "text":
         assert text_dataset is not None
-        return text_dataset.sample_batch(split, config.batch_size)
+        return text_dataset.sample_batch(split, config.batch_size, step=step)
     raise ValueError(config.task)
 
 
@@ -219,10 +219,9 @@ def main() -> None:
                 "mean_nesting_force_norm": train_metrics["mean_nesting_force_norm"],
                 "center_entropy": train_metrics["center_entropy"],
             }
-            for source in (train_metrics, val_metrics):
+            for source, prefix in ((train_metrics, "train"), (val_metrics, "validation")):
                 for key, value in source.items():
-                    prefixed = key if key in row else (f"validation_{key}" if source is val_metrics else f"train_{key}")
-                    row.setdefault(prefixed, value)
+                    row.setdefault(f"{prefix}_{key}", value)
             history.append(row)
             if writer is None:
                 writer = csv.DictWriter(handle, fieldnames=list(row.keys()))
