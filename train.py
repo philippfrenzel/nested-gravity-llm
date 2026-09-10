@@ -71,12 +71,12 @@ def get_batch(config, split: str, step: int, text_dataset: CharacterTextDataset 
 
 
 def sequence_metrics(logits: torch.Tensor, targets: torch.Tensor, target_mask: torch.Tensor) -> Dict[str, float]:
+    aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask)
     vocab_size = logits.size(-1)
-    loss = F.cross_entropy(logits[:, :-1].reshape(-1, vocab_size), targets[:, 1:].reshape(-1))
-    predictions = logits.argmax(dim=-1)
-    shifted_mask = target_mask[:, 1:]
-    correct = (predictions[:, :-1] == targets[:, 1:]) & shifted_mask
-    accuracy = correct.float().sum() / shifted_mask.float().sum().clamp_min(1.0)
+    loss = F.cross_entropy(aligned_logits.reshape(-1, vocab_size), aligned_targets.reshape(-1))
+    predictions = aligned_logits.argmax(dim=-1)
+    correct = (predictions == aligned_targets) & aligned_mask
+    accuracy = correct.float().sum() / aligned_mask.float().sum().clamp_min(1.0)
     metrics = {
         "loss": loss,
         "accuracy": accuracy.item(),
@@ -85,22 +85,30 @@ def sequence_metrics(logits: torch.Tensor, targets: torch.Tensor, target_mask: t
     return metrics
 
 
+def align_for_loss(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    target_mask: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if targets.shape == logits.shape[:2]:
+        return logits, targets, target_mask
+    return logits[:, :-1], targets[:, 1:], target_mask[:, 1:]
+
+
 def extra_task_metrics(config, logits: torch.Tensor, targets: torch.Tensor, target_mask: torch.Tensor) -> Dict[str, float]:
-    predictions = logits.argmax(dim=-1)
-    shifted_predictions = predictions[:, :-1]
-    shifted_targets = targets[:, 1:]
-    shifted_mask = target_mask[:, 1:]
-    selected_correct = ((shifted_predictions == shifted_targets) & shifted_mask).float()
-    selected_total = shifted_mask.float().sum().clamp_min(1.0)
+    aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask)
+    predictions = aligned_logits.argmax(dim=-1)
+    selected_correct = ((predictions == aligned_targets) & aligned_mask).float()
+    selected_total = aligned_mask.float().sum().clamp_min(1.0)
     metrics: Dict[str, float] = {}
     if config.task == "copy":
         metrics[f"accuracy_at_gap_{config.gap_length}"] = (selected_correct.sum() / selected_total).item()
     elif config.task == "associative_recall":
-        metrics[f"accuracy_at_gap_{config.num_pairs}"] = (selected_correct.sum() / selected_total).item()
+        metrics[f"accuracy_at_num_pairs_{config.num_pairs}"] = (selected_correct.sum() / selected_total).item()
     elif config.task == "brackets":
         token_accuracy = (selected_correct.sum() / selected_total).item()
-        full_sequence = (((shifted_predictions == shifted_targets) | ~shifted_mask).all(dim=1)).float().mean().item()
-        errors_per_sequence = ((shifted_predictions != shifted_targets) & shifted_mask).float().sum(dim=1).mean().item()
+        full_sequence = (((predictions == aligned_targets) | ~aligned_mask).all(dim=1)).float().mean().item()
+        errors_per_sequence = ((predictions != aligned_targets) & aligned_mask).float().sum(dim=1).mean().item()
         metrics.update(
             {
                 "token_accuracy": token_accuracy,
@@ -109,7 +117,7 @@ def extra_task_metrics(config, logits: torch.Tensor, targets: torch.Tensor, targ
             }
         )
     elif config.task == "text":
-        loss = F.cross_entropy(logits[:, :-1].reshape(-1, logits.size(-1)), targets[:, 1:].reshape(-1))
+        loss = F.cross_entropy(aligned_logits.reshape(-1, logits.size(-1)), aligned_targets.reshape(-1))
         metrics["bits_per_character"] = loss.item() / math.log(2)
     return metrics
 

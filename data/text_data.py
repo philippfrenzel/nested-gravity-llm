@@ -57,5 +57,6 @@ class CharacterTextDataset:
         starts = generator.integers(0, len(data) - self.sequence_length - 1, size=batch_size)
         sequences = [data[start : start + self.sequence_length + 1] for start in starts]
         stacked = torch.stack(sequences, dim=0)
-        target_mask = torch.ones_like(stacked, dtype=torch.bool)
-        return {"inputs": stacked[:, :-1], "targets": stacked[:, :-1].clone(), "target_mask": target_mask[:, :-1]}
+        targets = stacked[:, 1:].clone()
+        target_mask = torch.ones_like(targets, dtype=torch.bool)
+        return {"inputs": stacked[:, :-1], "targets": targets, "target_mask": target_mask}

@@ -62,7 +62,8 @@ def main() -> None:
         _, metrics = model(batch["inputs"], return_metrics=True)
     trace = getattr(model, "latest_trace", {})
 
-    accuracy_candidates = [key for key in rows[-1].keys() if "accuracy_at_gap_" in key]
+    accuracy_candidates = [key for key in rows[-1].keys() if key.startswith("validation_accuracy_at_gap_")]
+    recall_candidates = [key for key in rows[-1].keys() if key.startswith("validation_accuracy_at_num_pairs_")]
     if accuracy_candidates:
         plt.figure()
         gaps = [int(key.rsplit("_", 1)[-1]) for key in accuracy_candidates]
@@ -70,6 +71,25 @@ def main() -> None:
         plt.plot(gaps, values, marker="o")
         plt.xlabel("gap")
         plt.ylabel("accuracy")
+        plt.tight_layout()
+        plt.savefig(plot_dir / "accuracy_by_gap.png")
+        plt.close()
+    elif recall_candidates:
+        plt.figure()
+        pair_counts = [int(key.rsplit("_", 1)[-1]) for key in recall_candidates]
+        values = [float(rows[-1][key]) for key in recall_candidates]
+        plt.plot(pair_counts, values, marker="o")
+        plt.xlabel("num_pairs")
+        plt.ylabel("accuracy")
+        plt.tight_layout()
+        plt.savefig(plot_dir / "accuracy_by_gap.png")
+        plt.close()
+    elif {"validation_token_accuracy", "validation_full_sequence_accuracy"} <= set(rows[-1].keys()):
+        plt.figure()
+        labels = ["token_accuracy", "full_sequence_accuracy"]
+        values = [float(rows[-1]["validation_token_accuracy"]), float(rows[-1]["validation_full_sequence_accuracy"])]
+        plt.bar(labels, values)
+        plt.ylim(0.0, 1.0)
         plt.tight_layout()
         plt.savefig(plot_dir / "accuracy_by_gap.png")
         plt.close()
