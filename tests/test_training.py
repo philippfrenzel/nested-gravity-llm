@@ -101,6 +101,15 @@ class TrainingTests(unittest.TestCase):
             text_batch["targets_are_aligned"],
         )
         self.assertTrue(torch.isfinite(text_metrics["loss"]))
+        text_extra_metrics = extra_task_metrics(
+            SimpleNamespace(task="text", gap_length=0, num_pairs=0),
+            text_logits,
+            text_batch["targets"],
+            text_batch["target_mask"],
+            text_batch["targets_are_aligned"],
+            sequence_loss=float(text_metrics["loss"].item()),
+        )
+        self.assertIn("bits_per_character", text_extra_metrics)
 
         bracket_sequence_metrics = sequence_metrics(
             bracket_logits,

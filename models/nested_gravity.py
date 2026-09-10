@@ -219,6 +219,9 @@ class NestedGravitationalLM(nn.Module):
             "nesting_force_norms_by_position": torch.stack(nesting_force_trace).cpu().tolist(),
             "interaction_strength": interaction_trace.cpu().tolist(),
         }
+        if self.training and self.use_nesting:
+            with torch.no_grad():
+                self.center_values.copy_(center_values)
         if return_metrics:
             return stacked_logits, dict(self.latest_metrics)
         return stacked_logits

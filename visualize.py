@@ -30,7 +30,8 @@ def causality_profile(model, tokens: torch.Tensor) -> np.ndarray:
     if tokens.size(1) < 3:
         return np.zeros(tokens.size(1), dtype=float)
     modified = tokens.clone()
-    modified[:, -1] = (modified[:, -1] + 1) % max(2, int(tokens.max().item()) + 2)
+    vocab_size = int(getattr(model.output_projection, "out_features", int(tokens.max().item()) + 1))
+    modified[:, -1] = (modified[:, -1] + 1) % max(2, vocab_size)
     with torch.no_grad():
         baseline = model(tokens)
         changed = model(modified)
