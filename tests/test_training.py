@@ -102,6 +102,14 @@ class TrainingTests(unittest.TestCase):
         )
         self.assertTrue(torch.isfinite(text_metrics["loss"]))
 
+        bracket_sequence_metrics = sequence_metrics(
+            bracket_logits,
+            bracket_batch["targets"],
+            bracket_batch["target_mask"],
+            bracket_batch["targets_are_aligned"],
+        )
+        self.assertTrue(torch.isfinite(bracket_sequence_metrics["loss"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,7 +39,7 @@ def causality_profile(model, tokens: torch.Tensor) -> np.ndarray:
 
 def main() -> None:
     args = parse_args()
-    checkpoint = torch.load(args.checkpoint, map_location="cpu")
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     checkpoint_config = ExperimentConfig(**checkpoint["config"])
     config = ExperimentConfig(**checkpoint["config"])
     if args.task and args.task != checkpoint_config.task:

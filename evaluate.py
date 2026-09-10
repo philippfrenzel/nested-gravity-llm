@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    payload = torch.load(args.checkpoint, map_location="cpu")
+    payload = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     config = ExperimentConfig(**payload["config"])
     if args.task is not None and args.task != config.task:
         raise ValueError(f"Checkpoint task is '{config.task}', cannot evaluate as '{args.task}'")

@@ -81,7 +81,10 @@ def sequence_metrics(
     vocab_size = logits.size(-1)
     masked_logits = aligned_logits[aligned_mask]
     masked_targets = aligned_targets[aligned_mask]
-    loss = F.cross_entropy(masked_logits.reshape(-1, vocab_size), masked_targets.reshape(-1))
+    if masked_targets.numel() == 0:
+        loss = aligned_logits.sum() * 0.0
+    else:
+        loss = F.cross_entropy(masked_logits.reshape(-1, vocab_size), masked_targets.reshape(-1))
     predictions = aligned_logits.argmax(dim=-1)
     correct = (predictions == aligned_targets) & aligned_mask
     accuracy = correct.float().sum() / aligned_mask.float().sum().clamp_min(1.0)
@@ -110,6 +113,7 @@ def extra_task_metrics(
     targets: torch.Tensor,
     target_mask: torch.Tensor,
     targets_are_aligned: bool = False,
+    sequence_loss: float | None = None,
 ) -> Dict[str, float]:
     aligned_logits, aligned_targets, aligned_mask = align_for_loss(logits, targets, target_mask, targets_are_aligned)
     predictions = aligned_logits.argmax(dim=-1)
@@ -132,8 +136,13 @@ def extra_task_metrics(
             }
         )
     elif config.task == "text":
-        loss = F.cross_entropy(aligned_logits[aligned_mask].reshape(-1, logits.size(-1)), aligned_targets[aligned_mask].reshape(-1))
-        metrics["bits_per_character"] = loss.item() / math.log(2)
+        loss_value = sequence_loss if sequence_loss is not None else sequence_metrics(
+            logits,
+            targets,
+            target_mask,
+            targets_are_aligned,
+        )["loss"].item()
+        metrics["bits_per_character"] = loss_value / math.log(2)
     return metrics
 
 
@@ -185,7 +194,14 @@ def train_or_eval_epoch(config, model: nn.Module, optimizer: AdamW | None, split
         totals["accuracy"] += float(metrics["accuracy"])
         for key in list(totals.keys())[3:]:
             totals[key] += float(model_metrics.get(key, 0.0))
-        batch_extra = extra_task_metrics(config, logits, targets, target_mask, targets_are_aligned)
+        batch_extra = extra_task_metrics(
+            config,
+            logits,
+            targets,
+            target_mask,
+            targets_are_aligned,
+            sequence_loss=float(metrics["loss"].item()),
+        )
         for key, value in batch_extra.items():
             extra_totals[key] = extra_totals.get(key, 0.0) + float(value)
     averaged = {key: value / num_steps for key, value in totals.items()}
