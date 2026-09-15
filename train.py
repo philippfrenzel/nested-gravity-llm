@@ -20,8 +20,8 @@ from models import CausalTransformerLM, GRULanguageModel, NestedGravitationalLM
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None)
-    parser.add_argument("--model", type=str, default="nested_gravity")
-    parser.add_argument("--task", type=str, default="copy", choices=["copy", "associative_recall", "brackets", "text"])
+    parser.add_argument("--model", type=str, default=None)
+    parser.add_argument("--task", type=str, default=None, choices=["copy", "associative_recall", "brackets", "text"])
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--steps-per-epoch", type=int, default=None)

@@ -1,3 +1,4 @@
+import sys
 import unittest
 from types import SimpleNamespace
 
@@ -7,7 +8,7 @@ from config import set_seed
 from data.text_data import CharacterTextDataset
 from data.synthetic import generate_associative_recall_batch, generate_brackets_batch, generate_copy_batch
 from models import NestedGravitationalLM
-from train import extra_task_metrics, sequence_metrics, train_or_eval_epoch
+from train import extra_task_metrics, parse_args, sequence_metrics, train_or_eval_epoch
 
 
 class TrainingTests(unittest.TestCase):
@@ -118,6 +119,19 @@ class TrainingTests(unittest.TestCase):
             bracket_batch["targets_are_aligned"],
         )
         self.assertTrue(torch.isfinite(bracket_sequence_metrics["loss"]))
+
+    def test_parse_args_keeps_config_file_values_when_unset(self):
+        original_argv = sys.argv[:]
+        try:
+            sys.argv = ["train.py", "--config", "configs/cinderella.yaml"]
+            args = parse_args()
+        finally:
+            sys.argv = original_argv
+
+        self.assertIsNone(args.model)
+        self.assertIsNone(args.task)
+        self.assertIsNone(args.epochs)
+        self.assertIsNone(args.batch_size)
 
 
 if __name__ == "__main__":

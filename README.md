@@ -29,6 +29,20 @@ python evaluate.py --checkpoint outputs/checkpoints/nested_gravity_copy_gap64_be
 python visualize.py --checkpoint outputs/checkpoints/nested_gravity_copy_gap64_best.pt --task copy
 ```
 
+## Lokaler Chat
+
+Der vorhandene Character-Level-Checkpoint kann als kleine lokale Chat-Oberflaeche
+gestartet werden. Das Modell setzt Eingaben anhand des gelernten Cinderella-Textes
+fort; es ist kein dialogtrainiertes Sprachmodell.
+
+```bash
+python chat_app.py
+```
+
+Danach `http://127.0.0.1:8000` im Browser oeffnen. Mit `--checkpoint`, `--port`,
+`--temperature` und `--max-new-tokens` lassen sich Checkpoint, Port und Sampling
+anpassen.
+
 ## GitHub Codespaces / Devcontainer
 
 Die Konfiguration in `.devcontainer/devcontainer.json` stellt Python 3.12 und die
