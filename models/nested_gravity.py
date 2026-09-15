@@ -15,6 +15,7 @@ class NestedGravitationalLM(nn.Module):
         hidden_dim: int = 64,
         gravity_dim: int = 16,
         num_centers: int = 8,
+        num_parent_centers: int = 2,
         local_window: int = 16,
         dropout: float = 0.0,
         epsilon: float = 0.1,
@@ -24,6 +25,8 @@ class NestedGravitationalLM(nn.Module):
         ema_alpha: float = 0.05,
         use_local_gravity: bool = True,
         use_nesting: bool = True,
+        use_nested_bridges: bool = False,
+        bridge_strength: float = 1.0,
         use_repulsion: bool = False,
         **_: Dict,
     ) -> None:
@@ -31,6 +34,7 @@ class NestedGravitationalLM(nn.Module):
         self.hidden_dim = hidden_dim
         self.gravity_dim = gravity_dim
         self.num_centers = num_centers
+        self.num_parent_centers = num_parent_centers
         self.local_window = local_window
         self.epsilon = epsilon
         self.gravity_power = gravity_power
@@ -39,7 +43,12 @@ class NestedGravitationalLM(nn.Module):
         self.ema_alpha = ema_alpha
         self.use_local_gravity = use_local_gravity
         self.use_nesting = use_nesting
+        self.use_nested_bridges = use_nested_bridges
+        self.bridge_strength = bridge_strength
         self.use_repulsion = use_repulsion
+
+        if use_nested_bridges and num_parent_centers < 1:
+            raise ValueError("num_parent_centers must be positive when nested bridges are enabled")
 
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
         self.position_net = nn.Sequential(
@@ -56,6 +65,10 @@ class NestedGravitationalLM(nn.Module):
         self.local_value = nn.Linear(hidden_dim, hidden_dim)
         self.center_direction = nn.Linear(gravity_dim, hidden_dim)
         self.center_value_proj = nn.Linear(hidden_dim, hidden_dim)
+        if self.use_nested_bridges:
+            self.parent_centers = nn.Parameter(torch.randn(num_parent_centers, gravity_dim) * 0.1)
+            self.bridge_value_proj = nn.Linear(hidden_dim, hidden_dim)
+            self.bridge_gate = nn.Linear(hidden_dim * 2, hidden_dim)
         self.gru_cell = nn.GRUCell(embedding_dim + hidden_dim + hidden_dim, hidden_dim)
         self.layer_norm = nn.LayerNorm(hidden_dim)
         self.output_projection = nn.Linear(hidden_dim, vocab_size)
@@ -103,6 +116,8 @@ class NestedGravitationalLM(nn.Module):
         logits = []
         local_force_norms = []
         nesting_force_norms = []
+        bridge_force_norms = []
+        parent_entropies = []
         center_entropies = []
         clipped_fraction = []
         token_center_distances = []
@@ -114,6 +129,7 @@ class NestedGravitationalLM(nn.Module):
         entropy_trace = []
         local_force_trace = []
         nesting_force_trace = []
+        bridge_force_trace = []
         interaction_trace = embedded.new_zeros(sequence_length, sequence_length)
 
         for t in range(sequence_length):
@@ -168,12 +184,35 @@ class NestedGravitationalLM(nn.Module):
             token_center_distances.append(torch.sqrt(center_dist2 + self.epsilon ** 2).mean())
 
             nesting_force = embedded.new_zeros(batch_size, self.hidden_dim)
+            bridge_force = embedded.new_zeros(batch_size, self.hidden_dim)
             if self.use_nesting:
                 center_kernel = self._kernel(center_dist2)
                 direction = torch.tanh(self.center_direction(center_delta))
                 projected_center_values = self.center_value_proj(center_values).unsqueeze(0).expand(batch_size, -1, -1)
                 raw_force = (assignments * center_kernel).unsqueeze(-1) * direction * projected_center_values
                 nesting_force = torch.clamp(raw_force.sum(dim=1), min=-self.force_clip, max=self.force_clip)
+
+                if self.use_nested_bridges:
+                    bridge_scores = (self.centers @ self.parent_centers.t()) / max(self.temperature, 1e-6)
+                    child_to_parent = torch.softmax(bridge_scores, dim=-1)
+                    parent_mass = child_to_parent.sum(dim=0, keepdim=True).t().clamp_min(1e-6)
+                    parent_values = (child_to_parent.t() @ center_values) / parent_mass
+                    bridged_center_values = child_to_parent @ parent_values
+                    bridge_context = assignments @ bridged_center_values
+                    bridge_gate = torch.sigmoid(self.bridge_gate(torch.cat([h_prev, bridge_context], dim=-1)))
+                    bridge_force = bridge_gate * torch.tanh(self.bridge_value_proj(bridge_context))
+                    bridge_force = torch.clamp(
+                        self.bridge_strength * bridge_force,
+                        min=-self.force_clip,
+                        max=self.force_clip,
+                    )
+                    nesting_force = torch.clamp(
+                        nesting_force + bridge_force,
+                        min=-self.force_clip,
+                        max=self.force_clip,
+                    )
+                    parent_entropy = -(child_to_parent * torch.log(child_to_parent.clamp_min(1e-8))).sum(dim=-1)
+                    parent_entropies.append(parent_entropy.mean())
 
             cell_input = torch.cat([embedding_t, local_force, nesting_force], dim=-1)
             h_t = self.gru_cell(cell_input, h_prev)
@@ -186,10 +225,12 @@ class NestedGravitationalLM(nn.Module):
             position_history.append(r_t)
             local_force_norms.append(local_force.norm(dim=-1).mean())
             nesting_force_norms.append(nesting_force.norm(dim=-1).mean())
+            bridge_force_norms.append(bridge_force.norm(dim=-1).mean())
             positions_trace.append(r_t[0].detach())
             assignment_trace.append(assignments[0].detach())
             local_force_trace.append(local_force[0].norm().detach())
             nesting_force_trace.append(nesting_force[0].norm().detach())
+            bridge_force_trace.append(bridge_force[0].norm().detach())
             logits.append(self.output_projection(h_t))
             h_prev = h_t
 
@@ -202,6 +243,8 @@ class NestedGravitationalLM(nn.Module):
         self.latest_metrics = {
             "mean_local_force_norm": torch.stack(local_force_norms).mean().item(),
             "mean_nesting_force_norm": torch.stack(nesting_force_norms).mean().item(),
+            "mean_bridge_force_norm": torch.stack(bridge_force_norms).mean().item(),
+            "parent_center_entropy": torch.stack(parent_entropies).mean().item() if parent_entropies else 0.0,
             "center_entropy": torch.stack(center_entropies).mean().item(),
             "effective_num_centers": effective_num_centers.item(),
             "clipped_force_fraction": torch.stack(clipped_fraction).mean().item(),
@@ -217,6 +260,7 @@ class NestedGravitationalLM(nn.Module):
             "center_entropy_by_position": torch.stack(entropy_trace).cpu().tolist(),
             "local_force_norms_by_position": torch.stack(local_force_trace).cpu().tolist(),
             "nesting_force_norms_by_position": torch.stack(nesting_force_trace).cpu().tolist(),
+            "bridge_force_norms_by_position": torch.stack(bridge_force_trace).cpu().tolist(),
             "interaction_strength": interaction_trace.cpu().tolist(),
         }
         if self.training and self.use_nesting:

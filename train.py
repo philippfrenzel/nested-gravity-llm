@@ -37,7 +37,14 @@ def parse_args() -> argparse.Namespace:
 
 def make_model(config) -> nn.Module:
     kwargs = config.to_dict()
-    if config.model in {"nested_gravity", "local_gravity", "nesting_only", "gru_only", "nested_gravity_repulsion"}:
+    if config.model in {
+        "nested_gravity",
+        "local_gravity",
+        "nesting_only",
+        "gru_only",
+        "nested_gravity_repulsion",
+        "nested_gravity_bridges",
+    }:
         return NestedGravitationalLM(**kwargs)
     if config.model == "gru":
         return GRULanguageModel(**kwargs)
@@ -56,9 +63,17 @@ def experiment_name(config) -> str:
     return f"{config.model}_{config.task}_{suffix}"
 
 
-def get_batch(config, split: str, step: int, text_dataset: CharacterTextDataset | None = None) -> Dict[str, torch.Tensor]:
+def get_batch(
+    config,
+    split: str,
+    step: int,
+    text_dataset: CharacterTextDataset | None = None,
+    epoch: int = 0,
+) -> Dict[str, torch.Tensor]:
     seed_offsets = {"train": 0, "val": 10_000, "test": 20_000}
-    seed = config.seed + step + seed_offsets.get(split, 10_000)
+    epoch_offset = epoch * config.steps_per_epoch if split == "train" else 0
+    batch_step = step + epoch_offset
+    seed = config.seed + batch_step + seed_offsets.get(split, 10_000)
     if config.task == "copy":
         return generate_copy_batch(config.batch_size, config.memory_length, config.gap_length, config.vocab_size, seed)
     if config.task == "associative_recall":
@@ -67,7 +82,7 @@ def get_batch(config, split: str, step: int, text_dataset: CharacterTextDataset 
         return generate_brackets_batch(config.batch_size, config.max_depth, config.noise_tokens, seed)
     if config.task == "text":
         assert text_dataset is not None
-        return text_dataset.sample_batch(split, config.batch_size, step=step)
+        return text_dataset.sample_batch(split, config.batch_size, step=batch_step)
     raise ValueError(config.task)
 
 
@@ -157,7 +172,14 @@ def regularization_loss(config, model: nn.Module, metrics: Dict[str, float]) -> 
     )
 
 
-def train_or_eval_epoch(config, model: nn.Module, optimizer: AdamW | None, split: str, text_dataset: CharacterTextDataset | None = None) -> Dict[str, float]:
+def train_or_eval_epoch(
+    config,
+    model: nn.Module,
+    optimizer: AdamW | None,
+    split: str,
+    text_dataset: CharacterTextDataset | None = None,
+    epoch: int = 0,
+) -> Dict[str, float]:
     is_train = optimizer is not None
     model.train(is_train)
     num_steps = config.steps_per_epoch if is_train else config.val_steps
@@ -167,6 +189,7 @@ def train_or_eval_epoch(config, model: nn.Module, optimizer: AdamW | None, split
         "gradient_norm": 0.0,
         "mean_local_force_norm": 0.0,
         "mean_nesting_force_norm": 0.0,
+        "mean_bridge_force_norm": 0.0,
         "center_entropy": 0.0,
         "effective_num_centers": 0.0,
         "clipped_force_fraction": 0.0,
@@ -175,7 +198,7 @@ def train_or_eval_epoch(config, model: nn.Module, optimizer: AdamW | None, split
     }
     extra_totals: Dict[str, float] = {}
     for step in range(num_steps):
-        batch = get_batch(config, split, step, text_dataset)
+        batch = get_batch(config, split, step, text_dataset, epoch)
         inputs = batch["inputs"]
         targets = batch["targets"]
         target_mask = batch["target_mask"]
@@ -238,7 +261,7 @@ def main() -> None:
     with metrics_path.open("w", newline="", encoding="utf-8") as handle:
         writer = None
         for epoch in range(1, config.epochs + 1):
-            train_metrics = train_or_eval_epoch(config, model, optimizer, "train", text_dataset)
+            train_metrics = train_or_eval_epoch(config, model, optimizer, "train", text_dataset, epoch)
             val_metrics = train_or_eval_epoch(config, model, None, "val", text_dataset)
             row = {
                 "epoch": epoch,
@@ -249,6 +272,7 @@ def main() -> None:
                 "gradient_norm": train_metrics["gradient_norm"],
                 "mean_local_force_norm": train_metrics["mean_local_force_norm"],
                 "mean_nesting_force_norm": train_metrics["mean_nesting_force_norm"],
+                "mean_bridge_force_norm": train_metrics["mean_bridge_force_norm"],
                 "center_entropy": train_metrics["center_entropy"],
             }
             for source, prefix in ((train_metrics, "train"), (val_metrics, "validation")):

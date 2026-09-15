@@ -40,8 +40,11 @@ python chat_app.py
 ```
 
 Danach `http://127.0.0.1:8000` im Browser oeffnen. Mit `--checkpoint`, `--port`,
-`--temperature` und `--max-new-tokens` lassen sich Checkpoint, Port und Sampling
-anpassen.
+`--temperature`, `--top-k` und `--max-new-tokens` lassen sich Checkpoint, Port und
+Sampling anpassen. Eine niedrige Temperatur und ein kleines `top-k` erzeugen meist
+ruhigere Texte, waehrend hoehere Werte abwechslungsreicher, aber fehleranfaelliger
+sind. Fuer echte Dialoge muss das Modell auf einem groesseren Dialogkorpus trainiert
+werden; der enthaltene Cinderella-Checkpoint kennt nur die Sprache seiner Geschichte.
 
 ## GitHub Codespaces / Devcontainer
 
@@ -86,6 +89,24 @@ ausführen.
 - Associative Recall mit zufälligen Schlüssel-Wert-Paaren
 - Hierarchical Brackets mit mehreren Klammertypen
 - Character-Level-Textdaten mit eingebautem deutschem Fallback-Korpus oder `data/text.txt`
+
+## Hierarchische Nested-Set-Bruecken
+
+Die experimentelle Variante `nested_gravity_bridges` ordnet die vorhandenen feinen
+Gravitationszentren weich einer kleineren Menge von Parent-Zentren zu. Informationen
+werden von Child-Zentren zu ihrem Parent aggregiert und als lernbare Brueckenkraft
+an die zugeordneten Child-Mengen zurueckgegeben. Dadurch koennen getrennte lokale
+Cluster Information ueber eine gemeinsame uebergeordnete Menge austauschen.
+
+```bash
+python train.py --config configs/cinderella.yaml --model nested_gravity_bridges
+```
+
+Die Parameter `num_parent_centers` und `bridge_strength` steuern Breite und Einfluss
+der Bruecke. `use_nested_bridges: false` bleibt der Standard, damit vorhandene
+Checkpoints kompatibel bleiben. Fuer einen fairen Vergleich sollten mindestens
+Validierungsverlust, Zeichen-Genauigkeit, Laufzeit und `mean_bridge_force_norm`
+zwischen mehreren Seeds verglichen werden.
 
 ## Reproduzierbarkeit
 

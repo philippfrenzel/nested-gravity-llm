@@ -8,10 +8,27 @@ from config import set_seed
 from data.text_data import CharacterTextDataset
 from data.synthetic import generate_associative_recall_batch, generate_brackets_batch, generate_copy_batch
 from models import NestedGravitationalLM
-from train import extra_task_metrics, parse_args, sequence_metrics, train_or_eval_epoch
+from train import extra_task_metrics, get_batch, parse_args, sequence_metrics, train_or_eval_epoch
 
 
 class TrainingTests(unittest.TestCase):
+    def test_training_batches_change_between_epochs(self):
+        config = SimpleNamespace(
+            task="text",
+            batch_size=4,
+            seed=42,
+            steps_per_epoch=3,
+        )
+        text_dataset = CharacterTextDataset.from_path(None, sequence_length=16, seed=42)
+
+        first_epoch = get_batch(config, "train", 0, text_dataset, epoch=1)["inputs"]
+        second_epoch = get_batch(config, "train", 0, text_dataset, epoch=2)["inputs"]
+        validation_one = get_batch(config, "val", 0, text_dataset, epoch=1)["inputs"]
+        validation_two = get_batch(config, "val", 0, text_dataset, epoch=2)["inputs"]
+
+        self.assertFalse(torch.equal(first_epoch, second_epoch))
+        self.assertTrue(torch.equal(validation_one, validation_two))
+
     def test_nested_gravity_training_reduces_loss(self):
         set_seed(42)
         model = NestedGravitationalLM(vocab_size=16, embedding_dim=32, hidden_dim=32, gravity_dim=8, num_centers=4, local_window=4)

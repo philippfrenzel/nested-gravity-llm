@@ -90,7 +90,7 @@ PAGE = """<!doctype html>
 
 
 class TextGenerator:
-    def __init__(self, checkpoint_path: Path, temperature: float, max_new_tokens: int) -> None:
+    def __init__(self, checkpoint_path: Path, temperature: float, max_new_tokens: int, top_k: int = 5) -> None:
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         if "config" not in checkpoint or "model_state" not in checkpoint:
             raise ValueError("Checkpoint must contain 'config' and 'model_state'.")
@@ -105,6 +105,7 @@ class TextGenerator:
         self.model.eval()
         self.temperature = temperature
         self.max_new_tokens = max_new_tokens
+        self.top_k = top_k
 
         if len(self.tokenizer.vocab) != self.config.vocab_size:
             raise ValueError("Tokenizer vocabulary does not match the checkpoint. Check text_path in its configuration.")
@@ -123,8 +124,10 @@ class TextGenerator:
         for _ in range(self.max_new_tokens):
             context = torch.tensor([token_ids[-context_length:]], dtype=torch.long)
             logits = self.model(context)
-            distribution = torch.softmax(logits[0, -1] / self.temperature, dim=-1)
-            next_token = torch.multinomial(distribution, 1).item()
+            next_token_logits = logits[0, -1] / self.temperature
+            top_values, top_indices = torch.topk(next_token_logits, min(self.top_k, next_token_logits.numel()))
+            sampled_index = torch.multinomial(torch.softmax(top_values, dim=-1), 1)
+            next_token = top_indices[sampled_index].item()
             token_ids.append(next_token)
             generated.append(next_token)
         return self.tokenizer.decode(generated)
@@ -175,7 +178,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Serve a small local interface for a text checkpoint.")
     parser.add_argument("--checkpoint", type=Path, default=Path("outputs/checkpoints/nested_gravity_text_char_best.pt"))
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--temperature", type=float, default=0.8)
+    parser.add_argument("--temperature", type=float, default=0.2)
+    parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--max-new-tokens", type=int, default=80)
     return parser.parse_args()
 
@@ -184,7 +188,9 @@ def main() -> None:
     args = parse_args()
     if args.temperature <= 0:
         raise ValueError("temperature must be greater than zero.")
-    generator = TextGenerator(args.checkpoint, args.temperature, args.max_new_tokens)
+    if args.top_k <= 0:
+        raise ValueError("top-k must be greater than zero.")
+    generator = TextGenerator(args.checkpoint, args.temperature, args.max_new_tokens, args.top_k)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(generator))
     print(f"Chat available at http://127.0.0.1:{args.port}")
     try:

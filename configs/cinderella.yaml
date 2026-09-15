@@ -9,6 +9,7 @@ dropout: 0.0
 max_sequence_length: 256
 gravity_dim: 16
 num_centers: 8
+num_parent_centers: 2
 local_window: 16
 epsilon: 0.1
 gravity_power: 1.0
@@ -34,6 +35,8 @@ entropy_loss_weight: 0.0
 repulsion_loss_weight: 0.0
 use_local_gravity: true
 use_nesting: true
+use_nested_bridges: false
+bridge_strength: 1.0
 use_repulsion: false
 output_root: outputs
 text_path: data/cinderella.txt

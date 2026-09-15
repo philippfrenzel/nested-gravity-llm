@@ -24,6 +24,7 @@ class ExperimentConfig:
     max_sequence_length: int = 256
     gravity_dim: int = 16
     num_centers: int = 8
+    num_parent_centers: int = 2
     local_window: int = 16
     epsilon: float = 0.1
     gravity_power: float = 1.0
@@ -49,6 +50,8 @@ class ExperimentConfig:
     repulsion_loss_weight: float = 0.0
     use_local_gravity: bool = True
     use_nesting: bool = True
+    use_nested_bridges: bool = False
+    bridge_strength: float = 1.0
     use_repulsion: bool = False
     output_root: str = "outputs"
     config_path: Optional[str] = None
@@ -113,6 +116,10 @@ def build_config(args: Any) -> ExperimentConfig:
         config.use_local_gravity = True
         config.use_nesting = True
         config.use_repulsion = True
+    elif config.model == "nested_gravity_bridges":
+        config.use_local_gravity = True
+        config.use_nesting = True
+        config.use_nested_bridges = True
     return config
 
 

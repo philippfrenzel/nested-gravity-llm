@@ -12,6 +12,16 @@ class CausalityTests(unittest.TestCase):
         changed[0, 6] = 9
         models = [
             NestedGravitationalLM(vocab_size=16, embedding_dim=32, hidden_dim=32, gravity_dim=8, num_centers=4, local_window=4),
+            NestedGravitationalLM(
+                vocab_size=16,
+                embedding_dim=32,
+                hidden_dim=32,
+                gravity_dim=8,
+                num_centers=4,
+                num_parent_centers=2,
+                local_window=4,
+                use_nested_bridges=True,
+            ),
             GRULanguageModel(vocab_size=16, embedding_dim=32, hidden_dim=32),
             CausalTransformerLM(vocab_size=16, embedding_dim=32, hidden_dim=32, max_sequence_length=16),
         ]
