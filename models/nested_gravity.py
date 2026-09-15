@@ -16,6 +16,10 @@ class NestedGravitationalLM(nn.Module):
         gravity_dim: int = 16,
         num_centers: int = 8,
         num_parent_centers: int = 2,
+        num_universe_levels: int = 2,
+        universe_shrink_factor: float = 2.0,
+        universe_density_threshold: float = 1.5,
+        universe_switch_sharpness: float = 4.0,
         local_window: int = 16,
         dropout: float = 0.0,
         epsilon: float = 0.1,
@@ -35,6 +39,10 @@ class NestedGravitationalLM(nn.Module):
         self.gravity_dim = gravity_dim
         self.num_centers = num_centers
         self.num_parent_centers = num_parent_centers
+        self.num_universe_levels = num_universe_levels
+        self.universe_shrink_factor = universe_shrink_factor
+        self.universe_density_threshold = universe_density_threshold
+        self.universe_switch_sharpness = universe_switch_sharpness
         self.local_window = local_window
         self.epsilon = epsilon
         self.gravity_power = gravity_power
@@ -47,8 +55,13 @@ class NestedGravitationalLM(nn.Module):
         self.bridge_strength = bridge_strength
         self.use_repulsion = use_repulsion
 
-        if use_nested_bridges and num_parent_centers < 1:
-            raise ValueError("num_parent_centers must be positive when nested bridges are enabled")
+        if use_nested_bridges:
+            if num_parent_centers < 1:
+                raise ValueError("num_parent_centers must be positive when nested bridges are enabled")
+            if num_universe_levels < 2:
+                raise ValueError("num_universe_levels must be at least 2 when nested bridges are enabled")
+            if universe_shrink_factor <= 1.0:
+                raise ValueError("universe_shrink_factor must be greater than 1")
 
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
         self.position_net = nn.Sequential(
@@ -67,6 +80,15 @@ class NestedGravitationalLM(nn.Module):
         self.center_value_proj = nn.Linear(hidden_dim, hidden_dim)
         if self.use_nested_bridges:
             self.parent_centers = nn.Parameter(torch.randn(num_parent_centers, gravity_dim) * 0.1)
+            higher_center_counts = []
+            previous_count = num_parent_centers
+            for _ in range(num_universe_levels - 2):
+                previous_count = max(1, int(previous_count / universe_shrink_factor))
+                higher_center_counts.append(previous_count)
+            self.higher_universe_centers = nn.ParameterList(
+                [nn.Parameter(torch.randn(count, gravity_dim) * 0.1) for count in higher_center_counts]
+            )
+            self.universe_center_counts = [num_centers, num_parent_centers, *higher_center_counts]
             self.bridge_value_proj = nn.Linear(hidden_dim, hidden_dim)
             self.bridge_gate = nn.Linear(hidden_dim * 2, hidden_dim)
         self.gru_cell = nn.GRUCell(embedding_dim + hidden_dim + hidden_dim, hidden_dim)
@@ -80,6 +102,14 @@ class NestedGravitationalLM(nn.Module):
 
     def _kernel(self, squared_distance: torch.Tensor) -> torch.Tensor:
         return 1.0 / torch.pow(squared_distance + self.epsilon ** 2, self.gravity_power / 2.0)
+
+    def _density_switch(self, loads: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        expected_load = loads.sum(dim=-1, keepdim=True) / loads.size(-1)
+        relative_density = loads.max(dim=-1, keepdim=True).values / expected_load.clamp_min(1e-6)
+        switch = torch.sigmoid(
+            (relative_density - self.universe_density_threshold) * self.universe_switch_sharpness
+        )
+        return relative_density, switch
 
     def _update_centers(
         self,
@@ -118,12 +148,15 @@ class NestedGravitationalLM(nn.Module):
         nesting_force_norms = []
         bridge_force_norms = []
         parent_entropies = []
+        universe_densities = []
+        universe_switches = []
         center_entropies = []
         clipped_fraction = []
         token_center_distances = []
         token_token_distances = []
         assignment_history = []
         center_values = self.center_values.detach().clone()
+        center_loads = embedded.new_zeros(batch_size, self.num_centers)
         positions_trace = []
         assignment_trace = []
         entropy_trace = []
@@ -175,6 +208,7 @@ class NestedGravitationalLM(nn.Module):
 
             logits_scores = (r_t @ self.centers.t()) / max(self.temperature, 1e-6)
             assignments = torch.softmax(logits_scores, dim=-1)
+            center_loads = center_loads + assignments
             assignment_history.append(assignments)
             entropy = -(assignments * torch.log(assignments.clamp_min(1e-8))).sum(dim=-1)
             center_entropies.append(entropy.mean())
@@ -193,12 +227,36 @@ class NestedGravitationalLM(nn.Module):
                 nesting_force = torch.clamp(raw_force.sum(dim=1), min=-self.force_clip, max=self.force_clip)
 
                 if self.use_nested_bridges:
-                    bridge_scores = (self.centers @ self.parent_centers.t()) / max(self.temperature, 1e-6)
-                    child_to_parent = torch.softmax(bridge_scores, dim=-1)
-                    parent_mass = child_to_parent.sum(dim=0, keepdim=True).t().clamp_min(1e-6)
-                    parent_values = (child_to_parent.t() @ center_values) / parent_mass
-                    bridged_center_values = child_to_parent @ parent_values
-                    bridge_context = assignments @ bridged_center_values
+                    universe_centers = [self.centers, self.parent_centers, *self.higher_universe_centers]
+                    level_positions = universe_centers[0]
+                    level_values = center_values
+                    level_assignments = assignments
+                    level_loads = center_loads
+                    bridge_context = embedded.new_zeros(batch_size, self.hidden_dim)
+                    route_probability = embedded.new_ones(batch_size, 1)
+                    step_densities = []
+                    step_switches = []
+                    for upper_positions in universe_centers[1:]:
+                        bridge_scores = (level_positions @ upper_positions.t()) / max(self.temperature, 1e-6)
+                        lower_to_upper = torch.softmax(bridge_scores, dim=-1)
+                        upper_mass = lower_to_upper.sum(dim=0, keepdim=True).t().clamp_min(1e-6)
+                        upper_values = (lower_to_upper.t() @ level_values) / upper_mass
+                        upper_assignments = level_assignments @ lower_to_upper
+                        upper_loads = level_loads @ lower_to_upper
+
+                        relative_density, switch = self._density_switch(level_loads)
+                        route_probability = route_probability * switch
+                        bridge_context = bridge_context + route_probability * (upper_assignments @ upper_values)
+                        step_densities.append(relative_density.mean())
+                        step_switches.append(route_probability.mean())
+
+                        parent_entropy = -(lower_to_upper * torch.log(lower_to_upper.clamp_min(1e-8))).sum(dim=-1)
+                        parent_entropies.append(parent_entropy.mean())
+                        level_positions = upper_positions
+                        level_values = upper_values
+                        level_assignments = upper_assignments
+                        level_loads = upper_loads
+
                     bridge_gate = torch.sigmoid(self.bridge_gate(torch.cat([h_prev, bridge_context], dim=-1)))
                     bridge_force = bridge_gate * torch.tanh(self.bridge_value_proj(bridge_context))
                     bridge_force = torch.clamp(
@@ -211,8 +269,8 @@ class NestedGravitationalLM(nn.Module):
                         min=-self.force_clip,
                         max=self.force_clip,
                     )
-                    parent_entropy = -(child_to_parent * torch.log(child_to_parent.clamp_min(1e-8))).sum(dim=-1)
-                    parent_entropies.append(parent_entropy.mean())
+                    universe_densities.append(torch.stack(step_densities))
+                    universe_switches.append(torch.stack(step_switches))
 
             cell_input = torch.cat([embedding_t, local_force, nesting_force], dim=-1)
             h_t = self.gru_cell(cell_input, h_prev)
@@ -245,6 +303,12 @@ class NestedGravitationalLM(nn.Module):
             "mean_nesting_force_norm": torch.stack(nesting_force_norms).mean().item(),
             "mean_bridge_force_norm": torch.stack(bridge_force_norms).mean().item(),
             "parent_center_entropy": torch.stack(parent_entropies).mean().item() if parent_entropies else 0.0,
+            "mean_universe_density": torch.stack(universe_densities).mean().item() if universe_densities else 0.0,
+            "mean_universe_switch": torch.stack(universe_switches).mean().item() if universe_switches else 0.0,
+            "active_universe_level": (
+                1.0 + torch.stack(universe_switches).mean(dim=0).sum().item() if universe_switches else 1.0
+            ),
+            "universe_center_counts": getattr(self, "universe_center_counts", [self.num_centers]),
             "center_entropy": torch.stack(center_entropies).mean().item(),
             "effective_num_centers": effective_num_centers.item(),
             "clipped_force_fraction": torch.stack(clipped_fraction).mean().item(),

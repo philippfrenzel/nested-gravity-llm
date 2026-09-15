@@ -93,20 +93,35 @@ ausführen.
 ## Hierarchische Nested-Set-Bruecken
 
 Die experimentelle Variante `nested_gravity_bridges` ordnet die vorhandenen feinen
-Gravitationszentren weich einer kleineren Menge von Parent-Zentren zu. Informationen
-werden von Child-Zentren zu ihrem Parent aggregiert und als lernbare Brueckenkraft
-an die zugeordneten Child-Mengen zurueckgegeben. Dadurch koennen getrennte lokale
-Cluster Information ueber eine gemeinsame uebergeordnete Menge austauschen.
+Gravitationszentren weich mehreren immer kleineren Universen zu. Mit den
+Beispielwerten entsteht die Hierarchie `8 -> 4 -> 2 -> 1`. Informationen werden
+von Child-Zentren nach oben aggregiert und als lernbare Brueckenkraft zurueckgegeben.
+Dadurch koennen getrennte lokale Cluster Information ueber gemeinsame uebergeordnete
+Mengen austauschen.
+
+Das Routing misst pro Ebene die groesste kumulierte Belegung relativ zur erwarteten
+Gleichverteilung. Ueberschreitet diese relative Dichte den Schwellwert, aktiviert
+ein weicher Switch die naechste, ausgeduennte Ebene. Die Switches bauen aufeinander
+auf: Die dritte Ebene wird nur stark aktiv, wenn auch die Wege durch die Ebenen
+darunter aktiv sind.
 
 ```bash
 python train.py --config configs/cinderella.yaml --model nested_gravity_bridges
 ```
 
-Die Parameter `num_parent_centers` und `bridge_strength` steuern Breite und Einfluss
-der Bruecke. `use_nested_bridges: false` bleibt der Standard, damit vorhandene
-Checkpoints kompatibel bleiben. Fuer einen fairen Vergleich sollten mindestens
-Validierungsverlust, Zeichen-Genauigkeit, Laufzeit und `mean_bridge_force_norm`
-zwischen mehreren Seeds verglichen werden.
+`num_universe_levels`, `universe_shrink_factor`, `universe_density_threshold` und
+`universe_switch_sharpness` steuern Tiefe, exponentielle Ausduennung und Wechsel.
+`bridge_strength` bestimmt den Einfluss auf den Hidden State. Beobachtbar ist das
+Routing ueber `mean_universe_density`, `mean_universe_switch` und
+`active_universe_level`.
+
+`use_nested_bridges: false` bleibt der Standard, damit vorhandene Checkpoints
+kompatibel bleiben. Die aktuelle Implementierung berechnet beim Training alle
+Ebenen, damit die weichen Switches lernbar bleiben. Sie reduziert die semantische
+Kombinationsmenge, garantiert aber noch keinen Laufzeitgewinn. Ein spaeterer harter
+Top-1-Switch fuer die Inferenz kann inaktive Ebenen ueberspringen. Fuer einen fairen
+Vergleich sollten Validierungsverlust, Zeichen-Genauigkeit, Laufzeit und
+Brueckenmetriken zwischen mehreren Seeds verglichen werden.
 
 ## Reproduzierbarkeit
 

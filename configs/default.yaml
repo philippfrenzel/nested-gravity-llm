@@ -9,7 +9,11 @@ dropout: 0.0
 max_sequence_length: 256
 gravity_dim: 16
 num_centers: 8
-num_parent_centers: 2
+num_parent_centers: 4
+num_universe_levels: 4
+universe_shrink_factor: 2.0
+universe_density_threshold: 1.5
+universe_switch_sharpness: 4.0
 local_window: 16
 epsilon: 0.1
 gravity_power: 1.0

@@ -25,6 +25,10 @@ class ExperimentConfig:
     gravity_dim: int = 16
     num_centers: int = 8
     num_parent_centers: int = 2
+    num_universe_levels: int = 2
+    universe_shrink_factor: float = 2.0
+    universe_density_threshold: float = 1.5
+    universe_switch_sharpness: float = 4.0
     local_window: int = 16
     epsilon: float = 0.1
     gravity_power: float = 1.0
