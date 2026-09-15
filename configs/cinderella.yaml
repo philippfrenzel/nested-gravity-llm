@@ -39,4 +39,4 @@ use_nested_bridges: false
 bridge_strength: 1.0
 use_repulsion: false
 output_root: outputs
-text_path: data/cinderella.txt
+text_path: data/cinderella_expanded.txt
