@@ -18,11 +18,11 @@ ema_alpha: 0.05
 learning_rate: 0.0003
 weight_decay: 0.0001
 gradient_clip_norm: 1.0
-epochs: 8
+epochs: 40
 batch_size: 16
-steps_per_epoch: 30
-val_steps: 10
-early_stopping_patience: 5
+steps_per_epoch: 60
+val_steps: 15
+early_stopping_patience: 10
 memory_length: 8
 gap_length: 32
 num_pairs: 4
